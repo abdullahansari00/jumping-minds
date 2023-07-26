@@ -22,34 +22,48 @@ def bulk_create_elevators(request, count):
 
     return Response(serializer.data)
 
-
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def request_elevator(request):
+def validate_elevator_request(from_floor, to_floor):
     if not Elevator.objects.filter(operational=True).exists():
-        return Response("No elevators available!")
+        return False, "No elevators available!"
+    elif from_floor == to_floor:
+        return False, "Same floor!"
+    elif min([from_floor, to_floor]) < Elevator.MIN_FLOOR or max([from_floor, to_floor]) > Elevator.MAX_FLOOR:
+        return False, "Provided floor does not exists!"
 
+    return True, ""
+
+def assign_elevators(from_floor):
     operational_elevators = Elevator.objects.filter(operational=True)
-
-    from_floor = int(request.data.get("from_floor"))
-    to_floor = int(request.data.get("to_floor"))
-
-    if from_floor == to_floor:
-        return Response("Same floor!")
-    elif from_floor < Elevator.MIN_FLOOR or to_floor > Elevator.MAX_FLOOR:
-        return Response("Provided floor does not exists")
-
     up_elevator = (
         operational_elevators.filter(
-            Q(Q(up__isnull=True) | Q(up=True)), current_floor__lt=from_floor
+            Q(
+                Q(
+                    Q(up__isnull=True)
+                    | Q(up=True)
+                )
+                & Q(current_floor__lte=from_floor)
+            )
+            | Q(
+                Q(up=True)
+                & Q(current_floor__lt=from_floor)
+            )
         )
         .order_by("-current_floor")
         .first()
     )
-
     down_elevator = (
         operational_elevators.filter(
-            Q(Q(up__isnull=True) | Q(up=False)), current_floor__gt=from_floor
+            Q(
+                Q(
+                    Q(up__isnull=True)
+                    | Q(up=False)
+                )
+                & Q(current_floor__gte=from_floor)
+            )
+            | Q(
+                Q(up=False)
+                & Q(current_floor__gt=from_floor)
+            )
         )
         .order_by("current_floor")
         .first()
@@ -85,6 +99,20 @@ def request_elevator(request):
             else:
                 elevator = down_elevator
 
+    return elevator
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def request_elevator(request):
+    from_floor = int(request.data.get("from_floor"))
+    to_floor = int(request.data.get("to_floor"))
+    validation = validate_elevator_request(from_floor, to_floor)
+
+    if not validation[0]:
+        return Response(validation[1])
+    
+    elevator = assign_elevators(from_floor)
     elevator.traverse_floors.append(from_floor)
     elevator.save()
 

@@ -39,12 +39,6 @@ def elevator_move_next(elevator_id):
             },
         )
 
-    elif elevator.traverse_floors:
-        task = PeriodicTask.objects.filter(name=f"ElevatorMoveNext{elevator_id}").first()
-        task.enabled = True
-        task.start_time = None
-        task.save()
-
 
 @app.task(name="elevator_door_open")
 def elevator_door_open(elevator_id):
@@ -55,16 +49,16 @@ def elevator_door_open(elevator_id):
     if elevator.traverse_floors:
         task = PeriodicTask.objects.get(name=f"ElevatorMoveNext{elevator_id}")
         task.enabled = True
-        task.start_time = timezone.now() + timezone.timedelta(seconds=Elevator.ELEVATOR_TIME)
+        task.start_time = None
         task.save()
 
 
 @app.task(name="continue_elevator_move")
 def continue_elevator_move():
-    use_elevators = Elevator.objects.filter(up__isnull=False).values_list("id", flat=True)
-    open_door_elevators = PeriodicTask.objects.filter(
+    use_elevators = list(Elevator.objects.filter(up__isnull=False).values_list("id", flat=True))
+    open_door_elevators = list(PeriodicTask.objects.filter(
         task="elevator_door_open", enabled=True
-    ).values_list("description", flat=True)
+    ).values_list("description", flat=True))
     tasks = PeriodicTask.objects.filter(
         task="elevator_move_next",
         description__in=use_elevators,
