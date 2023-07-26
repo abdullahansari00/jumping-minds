@@ -31,9 +31,7 @@ class Elevator(models.Model):
             raise ValidationError('"Traverse floors" contains floors which does not exist')
 
     def save(self, *args, **kwargs):
-        self.clean()
         self.traverse_floors = list(set(self.traverse_floors))
-        # rdb.set_trace()
 
         if self.traverse_floors:
             if self.up == True and (
